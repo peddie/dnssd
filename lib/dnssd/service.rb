@@ -197,6 +197,27 @@ class DNSSD::Service
   end
 
   ##
+  # Helper function to iterate on names until a free one is found.
+  # Mimics the behavior of Apple's Bonjour zeroconf library -- if we
+  # try to register a duplicate service, we add (2) or (3) etc. to the
+  # end of the given service name.  
+
+  def unique_register(to_i, interface, name, type, domain, host, port, text_record, &block)
+    begin
+      _register to_i, interface, name, type, domain, host, port, text_record, &block
+    rescue DNSSD::NameConflictError
+      newname = ""
+      if name.match("^(.*)\((\d+)\)$") then
+        newname = $1 + " (" + (Integer($2)+1).to_s() + ")"
+      else
+        newname = name + " (2)"
+      end
+      puts name + " taken; replacing with " + newname
+      unique_register to_i, interface, newname, type, domain, host, port, text_record, &block
+    end
+  end
+
+  ##
   # Register a service.  A DNSSD::Reply object is passed to the optional block
   # when the registration completes.
   #
@@ -212,8 +233,8 @@ class DNSSD::Service
 
     raise DNSSD::Error, 'service in progress' if started?
 
-    _register flags.to_i, interface, name, type, domain, host, port,
-              text_record, &block
+    # _register flags.to_i, interface, name, type, domain, host, port, text_record, &block
+    unique_register flags.to_i, interface, name, type, domain, host, port, text_record, &block
 
     @type = :register
 
