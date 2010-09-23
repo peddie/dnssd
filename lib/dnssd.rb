@@ -13,7 +13,7 @@ module DNSSD
   ##
   # The version of DNSSD you're using.
 
-  VERSION = '1.3.1'
+  VERSION = '1.4'
 
   ##
   # Registers +socket+ with DNSSD as +name+.  If +service+ is omitted it is
@@ -28,7 +28,7 @@ module DNSSD
 
   def self.announce(socket, name, service = nil, text_record = nil, flags = 0,
                     interface = DNSSD::InterfaceAny, &block)
-    _, port, _, address = socket.addr
+    _, port, = socket.addr
 
     raise ArgumentError, 'socket not bound' if port == 0
 

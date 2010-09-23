@@ -61,6 +61,7 @@ dnssd_service_free(void *ptr) {
 static VALUE
 create_fullname(const char *name, const char *regtype,
     const char *domain) {
+  VALUE fullname;
   char buffer[kDNSServiceMaxDomainName];
 
   if (DNSServiceConstructFullName(buffer, name, regtype, domain)) {
@@ -69,7 +70,11 @@ create_fullname(const char *name, const char *regtype,
   }
 
   buffer[kDNSServiceMaxDomainName - 1] = '\000'; /* just in case */
-  return rb_str_new2(buffer);
+
+  fullname = rb_str_new2(buffer);
+  rb_enc_associate(fullname, rb_utf8_encoding());
+
+  return fullname;
 }
 
 /*
@@ -95,9 +100,14 @@ create_fullname(const char *name, const char *regtype,
  */
 
 static VALUE
-dnssd_service_s_fullname(VALUE klass, VALUE name, VALUE type, VALUE domain) {
-  return create_fullname(StringValueCStr(name), StringValueCStr(type),
-      StringValueCStr(domain));
+dnssd_service_s_fullname(VALUE klass, VALUE _name, VALUE _type, VALUE _domain) {
+  char * name, * type, * domain;
+
+  dnssd_utf8_cstr(_name, name);
+  dnssd_utf8_cstr(_type, type);
+  dnssd_utf8_cstr(_domain, domain);
+
+  return create_fullname(name, type, domain);
 }
 
 #ifdef HAVE_DNSSERVICEGETPROPERTY
@@ -109,12 +119,15 @@ dnssd_service_s_fullname(VALUE klass, VALUE name, VALUE type, VALUE domain) {
  * DNSSD is DaemonVersion
  */
 static VALUE
-dnssd_service_s_get_property(VALUE klass, VALUE property) {
+dnssd_service_s_get_property(VALUE klass, VALUE _property) {
+  char * property;
   uint32_t result = 0;
   uint32_t size = sizeof(result);
   DNSServiceErrorType e;
 
-  e = DNSServiceGetProperty(StringValueCStr(property), (void *)&result, &size);
+  dnssd_utf8_cstr(_property, property);
+
+  e = DNSServiceGetProperty(property, (void *)&result, &size);
 
   dnssd_check_error_code(e);
 
@@ -241,7 +254,7 @@ dnssd_service_add_record(VALUE self, VALUE _flags, VALUE _rrtype, VALUE _rdata,
   rrtype = NUM2UINT(_rrtype);
   rdlen = RSTRING_LEN(_rdata);
   rdata = (void *)RSTRING_PTR(_rdata);
-  ttl = NUM2ULONG(_ttl);
+  ttl = (uint32_t)NUM2ULONG(_ttl);
 
   get(cDNSSDService, self, DNSServiceRef, client);
 
@@ -274,8 +287,11 @@ dnssd_service_browse_reply(DNSServiceRef client, DNSServiceFlags flags,
   argv[1] = ULONG2NUM(flags);
   argv[2] = ULONG2NUM(interface);
   argv[3] = rb_str_new2(name);
+  rb_enc_associate(argv[3], rb_utf8_encoding());
   argv[4] = rb_str_new2(type);
+  rb_enc_associate(argv[4], rb_utf8_encoding());
   argv[5] = rb_str_new2(domain);
+  rb_enc_associate(argv[5], rb_utf8_encoding());
 
   reply = rb_class_new_instance(6, argv, cDNSSDReplyBrowse);
 
@@ -299,16 +315,16 @@ dnssd_service_browse(VALUE self, VALUE _flags, VALUE _interface, VALUE _type,
   DNSServiceErrorType e;
   DNSServiceRef *client;
 
-  type = StringValueCStr(_type);
+  dnssd_utf8_cstr(_type, type);
 
   if (!NIL_P(_domain))
-    domain = StringValueCStr(_domain);
+    dnssd_utf8_cstr(_domain, domain);
 
   if (!NIL_P(_flags))
     flags = (DNSServiceFlags)NUM2ULONG(_flags);
 
   if (!NIL_P(_interface))
-    interface = NUM2ULONG(_interface);
+    interface = (uint32_t)NUM2ULONG(_interface);
 
   get(cDNSSDService, self, DNSServiceRef, client);
 
@@ -334,6 +350,7 @@ dnssd_service_enumerate_domains_reply(DNSServiceRef client,
   argv[1] = ULONG2NUM(flags);
   argv[2] = ULONG2NUM(interface);
   argv[3] = rb_str_new2(domain);
+  rb_enc_associate(argv[3], rb_utf8_encoding());
 
   reply = rb_class_new_instance(4, argv, cDNSSDReplyDomain);
 
@@ -358,7 +375,7 @@ dnssd_service_enumerate_domains(VALUE self, VALUE _flags, VALUE _interface) {
     flags = (DNSServiceFlags)NUM2ULONG(_flags);
 
   if (!NIL_P(_interface))
-    interface = NUM2ULONG(_interface);
+    interface = (uint32_t)NUM2ULONG(_interface);
 
   get(cDNSSDService, self, DNSServiceRef, client);
 
@@ -385,7 +402,9 @@ dnssd_service_getaddrinfo_reply(DNSServiceRef client, DNSServiceFlags flags,
   argv[1] = ULONG2NUM(flags);
   argv[2] = ULONG2NUM(interface);
   argv[3] = rb_str_new2(host);
+  rb_enc_associate(argv[3], rb_utf8_encoding());
   argv[4] = rb_str_new((char *)address, SIN_LEN((struct sockaddr_in*)address));
+  rb_enc_associate(argv[4], rb_utf8_encoding());
   argv[5] = ULONG2NUM(ttl);
 
   reply = rb_class_new_instance(6, argv, cDNSSDReplyAddrInfo);
@@ -410,7 +429,7 @@ dnssd_service_getaddrinfo(VALUE self, VALUE _flags, VALUE _interface,
   DNSServiceErrorType e;
   DNSServiceRef *client;
 
-  host = StringValueCStr(_host);
+  dnssd_utf8_cstr(_host, host);
 
   protocol = (DNSServiceProtocol)NUM2ULONG(_protocol);
 
@@ -418,7 +437,7 @@ dnssd_service_getaddrinfo(VALUE self, VALUE _flags, VALUE _interface,
     flags = (DNSServiceFlags)NUM2ULONG(_flags);
 
   if (!NIL_P(_interface))
-    interface = NUM2ULONG(_interface);
+    interface = (uint32_t)NUM2ULONG(_interface);
 
   get(cDNSSDService, self, DNSServiceRef, client);
 
@@ -446,9 +465,11 @@ dnssd_service_query_record_reply(DNSServiceRef client, DNSServiceFlags flags,
   argv[1] = ULONG2NUM(flags);
   argv[2] = ULONG2NUM(interface);
   argv[3] = rb_str_new2(fullname);
+  rb_enc_associate(argv[3], rb_utf8_encoding());
   argv[4] = UINT2NUM(rrtype);
   argv[5] = UINT2NUM(rrclass);
   argv[6] = rb_str_new((char *)rdata, rdlen);
+  rb_enc_associate(argv[6], rb_utf8_encoding());
   argv[7] = ULONG2NUM(ttl);
 
   reply = rb_class_new_instance(8, argv, cDNSSDReplyQueryRecord);
@@ -474,8 +495,8 @@ dnssd_service_query_record(VALUE self, VALUE _flags, VALUE _interface,
   uint16_t rrclass;
 
   flags = (DNSServiceFlags)NUM2ULONG(_flags);
-  interface = NUM2ULONG(_interface);
-  fullname = StringValueCStr(_fullname);
+  interface = (uint32_t)NUM2ULONG(_interface);
+  dnssd_utf8_cstr(_fullname, fullname);
   rrtype = NUM2UINT(_rrtype);
   rrclass = NUM2UINT(_rrclass);
 
@@ -502,8 +523,11 @@ dnssd_service_register_reply(DNSServiceRef client, DNSServiceFlags flags,
   argv[0] = service;
   argv[1] = ULONG2NUM(flags);
   argv[2] = rb_str_new2(name);
+  rb_enc_associate(argv[2], rb_utf8_encoding());
   argv[3] = rb_str_new2(type);
+  rb_enc_associate(argv[3], rb_utf8_encoding());
   argv[4] = rb_str_new2(domain);
+  rb_enc_associate(argv[4], rb_utf8_encoding());
 
   reply = rb_class_new_instance(5, argv, cDNSSDReplyRegister);
 
@@ -530,14 +554,14 @@ dnssd_service_register(VALUE self, VALUE _flags, VALUE _interface, VALUE _name,
   DNSServiceErrorType e;
   DNSServiceRef *client;
 
-  name = StringValueCStr(_name);
-  type = StringValueCStr(_type);
+  dnssd_utf8_cstr(_name, name);
+  dnssd_utf8_cstr(_type, type);
 
   if (!NIL_P(_host))
-    host = StringValueCStr(_host);
+    dnssd_utf8_cstr(_host, host);
 
   if (!NIL_P(_domain))
-    domain = StringValueCStr(_domain);
+    dnssd_utf8_cstr(_domain, domain);
 
   port = htons((uint16_t)NUM2UINT(_port));
 
@@ -550,7 +574,7 @@ dnssd_service_register(VALUE self, VALUE _flags, VALUE _interface, VALUE _name,
     flags = (DNSServiceFlags)NUM2ULONG(_flags);
 
   if (!NIL_P(_interface))
-    interface = NUM2ULONG(_interface);
+    interface = (uint32_t)NUM2ULONG(_interface);
 
   if (rb_block_given_p())
     callback = dnssd_service_register_reply;
@@ -580,9 +604,12 @@ dnssd_service_resolve_reply(DNSServiceRef client, DNSServiceFlags flags,
   argv[1] = ULONG2NUM(flags);
   argv[2] = ULONG2NUM(interface);
   argv[3] = rb_str_new2(name);
+  rb_enc_associate(argv[3], rb_utf8_encoding());
   argv[4] = rb_str_new2(target);
+  rb_enc_associate(argv[4], rb_utf8_encoding());
   argv[5] = UINT2NUM(ntohs(port));
   argv[6] = rb_str_new((char *)txt_rec, txt_len);
+  rb_enc_associate(argv[6], rb_utf8_encoding());
 
   reply = rb_class_new_instance(7, argv, cDNSSDReplyResolve);
 
@@ -605,15 +632,15 @@ dnssd_service_resolve(VALUE self, VALUE _flags, VALUE _interface, VALUE _name,
   DNSServiceErrorType e;
   DNSServiceRef *client;
 
-  name = StringValueCStr(_name);
-  type = StringValueCStr(_type);
-  domain = StringValueCStr(_domain);
+  dnssd_utf8_cstr(_name, name);
+  dnssd_utf8_cstr(_type, type);
+  dnssd_utf8_cstr(_domain, domain);
 
   if (!NIL_P(_flags))
-    flags = NUM2ULONG(_flags);
+    flags = (uint32_t)NUM2ULONG(_flags);
 
   if (!NIL_P(_interface))
-    interface = NUM2ULONG(_interface);
+    interface = (uint32_t)NUM2ULONG(_interface);
 
   get(cDNSSDService, self, DNSServiceRef, client);
 

@@ -33,11 +33,19 @@ if have_header 'iphlpapi.h' then
   have_func('if_nametoindex', %w[iphlpapi.h netioapi.h]) ||
   abort('unable to find if_indextoname or if_nametoindex')
 else
+  if RUBY_PLATFORM =~ /solaris/ then
+    have_library('xnet') ||
+      abort('unable to find xnet library for if_indextoname/if_nametoindex')
+
+    $CFLAGS << ' -lxnet'
+  end
+
   have_func('if_indextoname', %w[sys/types.h sys/socket.h net/if.h]) &&
   have_func('if_nametoindex', %w[sys/types.h sys/socket.h net/if.h]) ||
   abort('unable to find if_indextoname or if_nametoindex')
 end
 
+# HACK prefer Socket.getservbyport in 1.9
 have_func('getservbyport', 'netdb.h') ||
 abort('unable to find getservbyport')
 
@@ -62,5 +70,10 @@ have_func 'kDNSServiceFlagsShareConnection', 'dns_sd.h'
 # avahi 0.6.25 is missing errors after BadTime
 have_func 'kDNSServiceErr_BadSig', 'dns_sd.h'
 
-create_makefile 'dnssd'
+puts
+puts 'checking for ruby features'
+have_header 'ruby/encoding.h'
+
+puts
+create_makefile 'dnssd/dnssd'
 
